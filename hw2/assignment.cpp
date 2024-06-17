@@ -2,6 +2,8 @@
 #include <fstream>
 #include <iostream>
 #include <vector>
+#include <algorithm>
+#include <random>
 
 class dataProcessing
 {
@@ -14,24 +16,42 @@ public:
         samples = tdata->getTrainSamples();                                                                             // Get design matrix  | results in a [784 x 20800] matrix with all features for each letter
         target = tdata->getTrainResponses();                                                                            // Get target values  | results in a [1 x 20800 (800*26 letters)] vector with all the identifications
     }
-    void splitData()
+
+    void splitData(cv::Mat &data, bool shuffle)
     {
         // Training with A and B
-        // First 1000 lines for training
-        // Last 5000 lines for testing
-    }
-    void testPrint(cv::Mat &Temp)
-    {
-        for (int i = 0; i < Temp.rows; ++i)
+        // 1014 (26 letters * 39 variations) lines for training
+        // Unsused 5000 lines for testing
+        for (int i = 0; i < 20800; i += 800)
         {
-            //   std::cout << Temp.at<float>(i,0);
+            // Split samples
+            trainSamples.push_back(samples.rowRange(i, i + 39));
+            testSamples.push_back(samples.rowRange(i + 39, i + 800 - 39));
+
+            // Split target
+            trainTarget.push_back(target.rowRange(i, i + 39));
+            testTarget.push_back(target.rowRange(i + 39, i + 800 - 39));
         }
-        // std::cout << Temp.size();
+        
+        if (shuffle)
+        {
+
+        }
     }
-    void standardizeData(cv::Mat &data)
+
+    void testPrint(cv::Mat &data)
     {
-        mean = cv::Mat::zeros(1, data.cols, CV_32F);
-        stdDev = cv::Mat::zeros(1, data.cols, CV_32F);
+        for (int i = 0; i < data.rows; ++i)
+        {
+            std::cout << data.at<float>(i, 0);
+        }
+        std::cout << data.size() << std::endl;
+    }
+
+    void standardizeData(cv::Mat &data) // standardize
+    {
+        mean = cv::Mat::zeros(1, data.cols, CV_32F);   // initiating the matricies
+        stdDev = cv::Mat::zeros(1, data.cols, CV_32F); // initiating the matricies
 
         cv::Scalar meanScalar, stdDevScalar;
         for (int i = 0; i < data.cols; i++)
@@ -47,26 +67,57 @@ public:
             }
         }
     }
-    void testPrintMeanStdDev(cv::Mat &Temp)
+
+    void testPrintMeanStdDev(cv::Mat &data)
     {
         cv::Scalar meanScalar, stdDevScalar;
-        for (int i = 0; i < Temp.cols; i++)
+        for (int i = 0; i < data.cols; i++)
         {
-            meanStdDev(Temp.col(i), meanScalar, stdDevScalar);
+            meanStdDev(data.col(i), meanScalar, stdDevScalar);
 
             std::cout << "Mittelwert:" << meanScalar[0] << "\n";
-            std::cout << "Standardabweichung:" << stdDevScalar[0] << "\n";
+            std::cout << "Standardabweichung:" << stdDevScalar[0] << "\n\n";
         }
     }
-    // get the identification vector
-    cv::Mat getTarget()
+
+    /* get the identification vectors
+    1 for Training
+    2 for Testing
+    0 / default for All*/
+    cv::Mat getTarget(int tmp)
     {
-        return target;
+        switch (tmp)
+        {
+        case 1:
+            std::cout << "Train Target data is returned!\n";
+            return trainTarget;
+        case 2:
+            std::cout << "Test Target data is returned!\n";
+            return testTarget;
+        default:
+            std::cout << "Whole Target data is returned!\n";
+            return target;
+        }
     }
-    // get the features vector
-    cv::Mat getSamples()
+
+    /* get the features vectors
+    1 for Training
+    2 for Testing
+    0 / default for All*/
+    cv::Mat getSamples(int tmp)
     {
-        return samples;
+        switch (tmp)
+        {
+        case 1:
+            std::cout << "Train Sample data is returned!\n";
+            return trainSamples;
+        case 2:
+            std::cout << "Test Sample data is returned!\n";
+            return testSamples;
+        default:
+            std::cout << "Whole Sample data is returned!\n";
+            return samples;
+        }
     }
 
 private:
@@ -74,8 +125,17 @@ private:
     std::string inputDataPath = "./data/emnist_letters_merged.csv";
     cv::Mat samples;
     cv::Mat target;
+
     cv::Mat mean;
     cv::Mat stdDev;
+
+    cv::Mat trainSamples;
+    cv::Mat testSamples;
+    cv::Mat testTarget;
+    cv::Mat trainTarget;
+
+    // int numTrainingSamples = 1014; // (26 letters * 39 variations)
+    // int numTestSamples = 5000;
 };
 
 class PCA_
@@ -94,8 +154,11 @@ int main()
 {
     dataProcessing dp;
     dp.loadData();
-    cv::Mat samples = dp.getSamples();
-    dp.standardizeData(samples);
-    dp.testPrintMeanStdDev(samples);
+    cv::Mat samples = dp.getSamples(0);
+    // dp.standardizeData(samples);
+    //  dp.testPrintMeanStdDev(samples);
+    dp.splitData(samples, 0);
+    cv::Mat training = dp.getSamples(1);
+    // dp.testPrint(training);
     return 0;
 };
