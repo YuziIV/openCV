@@ -16,15 +16,14 @@ public:
         samples = tdata->getTrainSamples();                                                                             // Get design matrix  | results in a [784 x 20800] matrix with all features for each letter
         target = tdata->getTrainResponses();                                                                            // Get target values  | results in a [1 x 20800 (800*26 letters)] vector with all the identifications
     }
-
-    void mergeAndShuffleData()
+    void mergeAndShuffleData(cv::Mat &typeTarget, cv::Mat &typeSample)
     {
         cv::Mat MergedData;
         std::vector<int> indices;
         auto rng = std::default_random_engine{};
 
         // Merge samples and targets
-        cv::hconcat(target, samples, MergedData);
+        cv::hconcat(typeTarget, typeSample, MergedData);
 
         indices.reserve(MergedData.rows);
 
@@ -43,46 +42,42 @@ public:
         }
         MergedData = shuffledTrainMatrix;
         // Split merged data back into samples and targets
-        int numCols = MergedData.cols;
-        target = MergedData.col(0).clone();
-        samples = MergedData.colRange(1, numCols).clone();
+        int numCols = trainSamples.cols;
+        typeTarget = MergedData.col(0).clone();
+        typeSample = MergedData.colRange(0, numCols).clone();
     }
 
-    void sampleAndFilter()
+    void splitData()
     {
         // Training with A and B
-        // First 1000 lines for training
-        // Following 5000 lines for testing
-        for (int i = 0; i < 8000; i++)
+        // 1000             (2 letters * 500 variations each) lines for training
+        // Unsused 5018     (26 lettes * 193 variations each) lines for testing
+        for (int i = 0; i < 1600; i += 800)
         {
-            // it should theoreticaly be possible to calc mean and stdDev of a sample and use these to standardize the rest of the set
-            // currently not working
-            standatisationSet.push_back(samples.row(i)); // FIX not ideal
+            // Split samples
+            trainSamples.push_back(samples.rowRange(i, i + 500));
+            testSamples.push_back(samples.rowRange(i + 500, i + 500 + 193));
 
-            float currentLetter = target.at<float>(0, i);
-            if (currentLetter == 1 || currentLetter == 2)
-            {
-                // collecting sample for training
-                trainSamples.push_back(samples.row(i));
-                trainTarget.push_back(target.at<float>(0, i));
-                // std::cout << samples.row(i) << std::endl;
-            }
+            // Split target
+            trainTarget.push_back(target.rowRange(i, i + 500));
+            testTarget.push_back(target.rowRange(i + 500, i + 500 + 193));
         }
-        // uncomment if Training set needs to be only A and B
-        // for (int i = 1000; i < 6000; i++)
-        // {
-        //     if (target.at<float>(0, i) == 1 || 2)
-        //     {
-        //         // collecting sample for testing
-        //         trainSamples.push_back(samples.at<float>(0, i));
-        //         trainTarget.push_back(target.at<float>(0, i));
-        //     }
-        // }
-        // collecting sample for testing
-        testSamples.push_back(samples.rowRange(8000, 13000));
-        testTarget.push_back(target.rowRange(8000, 13000));
+        for (int i = 1600; i < 20800; i += 800)
+        {
 
-        standardizeData(standatisationSet, 0); // FIX not ideal
+            testSamples.push_back(samples.rowRange(i, i + 193));
+
+            testTarget.push_back(target.rowRange(i, i + 193));
+        }
+    }
+
+    void testPrint(cv::Mat &data)
+    {
+        for (int i = 0; i < data.rows; ++i)
+        {
+            std::cout << data.at<float>(i, 68) << " ";
+        }
+        std::cout << data.size() << std::endl;
     }
 
     // use = 1 if you want to apply the calculated Standartizations parameters on another set
@@ -91,8 +86,8 @@ public:
         // Initialize mean and standard deviation matrices only if 'use' is false
         if (!use)
         {
-            mean = cv::Mat::zeros(1, data.cols, CV_32F);
-            stdDev = cv::Mat::zeros(1, data.cols, CV_32F);
+            mean = cv::Mat::zeros(1, data.cols, CV_32F);   // initiate the matrices
+            stdDev = cv::Mat::zeros(1, data.cols, CV_32F); // initiate the matrices
         }
 
         for (int i = 0; i < data.cols; i++)
@@ -113,17 +108,7 @@ public:
             }
         }
     }
-    void testPrint(cv::Mat &data, bool size)
-    {
-        if (!size)
-        {
-            for (int i = 0; i < data.rows; ++i)
-            {
-                std::cout << data.at<float>(i, 0) << " ";
-            }
-        }
-        std::cout << data.size() << std::endl;
-    }
+
     void testPrintMeanStdDev(cv::Mat &data, bool wholeMat)
     {
         if (wholeMat)
@@ -193,53 +178,26 @@ private:
     cv::Mat mean;
     cv::Mat stdDev;
 
-    cv::Mat standatisationSet; // extra set to calculate mean and stdDev
     cv::Mat trainSamples;
     cv::Mat testSamples;
     cv::Mat testTarget;
     cv::Mat trainTarget;
 
     cv::Scalar meanScalar, stdDevScalar;
+
+    // int numTrainingSamples = 1014; // (26 letters * 39 variations)
+    // int numTestSamples = 5000;
 };
 
 class PCA_
 {
 public:
-    PCA_() {}
-    ~PCA_() {}
-    void applyPCA(cv::Mat &data, int components = 1000)
-    {
-        cv::PCA pca_analysis(data, cv::Mat(), cv::PCA::DATA_AS_ROW, components);
-        data = pca_analysis.project(data);
-    }
-
 private:
 };
 
 class SVM
 {
 public:
-    // SVM() {}
-    // ~SVM() {}
-    // void trainSVM(cv::Mat &trainData, cv::Mat &trainLabels)
-    // {
-    //     // Create an SVM object
-    //     cv::Ptr<cv::ml::SVM> svm = cv::ml::SVM::create();
-    //     svm->setType(cv::ml::SVM::C_SVC);
-    //     svm->setKernel(cv::ml::SVM::RBF);
-    //     svm->setNu(0.5);     // Example value, adjust based on grid search
-    //     svm->setGamma(0.05); // Example value, adjust based on grid search
-
-    //     // Train the SVM
-    //     svm->train(trainData, cv::ml::ROW_SAMPLE, trainLabels);
-    // }
-    // float evaluateSVM(cv::Ptr<cv::ml::SVM> &svm, cv::Mat &testData, cv::Mat &testLabels)
-    // {
-    //     cv::Mat response;
-    //     svm->predict(testData, response);
-    //     return cv::countNonZero(response == testLabels) / (float)testData.rows;
-    // }
-
 private:
 };
 
@@ -247,26 +205,22 @@ int main()
 {
     dataProcessing dp;
     dp.loadData();
-    dp.mergeAndShuffleData(); // shuffle whole Dataset
-    dp.sampleAndFilter();
+    dp.splitData();
+    dp.mergeAndShuffleData(dp.getTarget(1), dp.getSamples(1)); // shuffle Trainingsdata
+    dp.mergeAndShuffleData(dp.getTarget(2), dp.getSamples(2)); // shuffle Testdata
+    dp.mergeAndShuffleData(dp.getTarget(0), dp.getSamples(0)); // shuffle Testdata
+
+    cv::Mat Stichprobe = dp.getSamples(0).clone();
+    dp.standardizeData(Stichprobe, 0);
 
     cv::Mat trainingSamples = dp.getSamples(1);
     cv::Mat testingSamples = dp.getSamples(2);
+    // dp.testPrint(samples);
+    dp.standardizeData(trainingSamples, 1);
+    dp.testPrintMeanStdDev(trainingSamples, 0);
 
-    dp.standardizeData(trainingSamples, 0);
-    std::cout << "Training Dataset metrics:";
-    dp.testPrint(trainingSamples, 1);
-    dp.testPrintMeanStdDev(trainingSamples, 1);
-
-    dp.standardizeData(testingSamples, 0);
-    std::cout << "Testing Dataset metrics:";
-    dp.testPrint(testingSamples, 1);
+    dp.standardizeData(testingSamples, 1);
     dp.testPrintMeanStdDev(testingSamples, 1);
 
-    PCA_ pca;
-    pca.applyPCA(trainingSamples);
-    std::cout << "Training Dataset metrics after PCA:";
-    dp.testPrint(trainingSamples, 1);
-    dp.testPrintMeanStdDev(trainingSamples, 1);
     return 0;
 };
