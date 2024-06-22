@@ -30,8 +30,8 @@ def plot_csv(filename):
                     label=f'Group {group}' if f'Group {group}' not in plt.gca().get_legend_handles_labels()[1] else "")
 
     # Set labels and adjust legend
-    plt.xlabel("Component Index")
-    plt.ylabel("PCA Value")
+    plt.xlabel("Pixel location")
+    plt.ylabel("Value")
     plt.legend(title="Identification")
     plt.grid(True)
 

@@ -48,41 +48,66 @@ public:
         samples = MergedData.colRange(1, numCols).clone();
     }
 
+    // void sampleAndFilter()
+    // {
+    //     // Training with A and B
+    //     // First 1000 lines for training
+    //     // Following 5000 lines for testing
+    //     for (int i = 0; i < 8000; i++)
+    //     {
+
+    //         standatisationSet.push_back(samples.row(i)); // FIX not ideal
+
+    //         float currentLetter = target.at<float>(0, i);
+    //         if (currentLetter == 1 || currentLetter == 2)
+    //         {
+    //             // collecting sample for training
+    //             trainSamples.push_back(samples.row(i));
+    //             trainTarget.push_back(target.at<float>(0, i));
+    //             // std::cout << samples.row(i) << std::endl;
+    //         }
+    //     }
+    //     // uncomment if Training set needs to be only A and B
+    //     // for (int i = 1000; i < 6000; i++)
+    //     // {
+    //     //     if (target.at<float>(0, i) == 1 || 2)
+    //     //     {
+    //     //         // collecting sample for testing
+    //     //         trainSamples.push_back(samples.at<float>(0, i));
+    //     //         trainTarget.push_back(target.at<float>(0, i));
+    //     //     }
+    //     // }
+    //     // collecting sample for testing
+    //     testSamples.push_back(samples.rowRange(8000, 13000));
+    //     testTarget.push_back(target.rowRange(8000, 13000));
+
+    //     standardizeData(standatisationSet, 0); // FIX not ideal
+    // }
     void sampleAndFilter()
     {
-        // Training with A and B
-        // First 1000 lines for training
-        // Following 5000 lines for testing
-        for (int i = 0; i < 8000; i++)
-        {
-            // it should theoreticaly be possible to calc mean and stdDev of a sample and use these to standardize the rest of the set
-            // currently not working
-            standatisationSet.push_back(samples.row(i)); // FIX not ideal
+        // Assume data is already shuffled and loaded into 'samples' and 'target'.
+        // Now, filter out the samples corresponding to the labels A (1) and B (2).
 
-            float currentLetter = target.at<float>(0, i);
-            if (currentLetter == 1 || currentLetter == 2)
+        cv::Mat mask = (target == 1) | (target == 2); // Create a mask for rows with A or B
+        cv::Mat filteredSamples, filteredTargets;
+        for (int i = 0; i < mask.rows; i++)
+        {
+            if (mask.at<bool>(i, 0)) // Use the mask to filter
             {
-                // collecting sample for training
-                trainSamples.push_back(samples.row(i));
-                trainTarget.push_back(target.at<float>(0, i));
-                // std::cout << samples.row(i) << std::endl;
+                filteredSamples.push_back(samples.row(i));
+                filteredTargets.push_back(target.row(i));
             }
         }
-        // uncomment if Training set needs to be only A and B
-        // for (int i = 1000; i < 6000; i++)
-        // {
-        //     if (target.at<float>(0, i) == 1 || 2)
-        //     {
-        //         // collecting sample for testing
-        //         trainSamples.push_back(samples.at<float>(0, i));
-        //         trainTarget.push_back(target.at<float>(0, i));
-        //     }
-        // }
-        // collecting sample for testing
-        testSamples.push_back(samples.rowRange(8000, 13000));
-        testTarget.push_back(target.rowRange(8000, 13000));
 
-        standardizeData(standatisationSet, 0); // FIX not ideal
+        // Split the data into training and testing
+        int trainingSize = std::round(filteredSamples.rows * 0.625); // 80% for training
+        trainSamples = filteredSamples.rowRange(0, trainingSize);
+        trainTarget = filteredTargets.rowRange(0, trainingSize);
+
+        testSamples = filteredSamples.rowRange(trainingSize, filteredSamples.rows);
+        testTarget = filteredTargets.rowRange(trainingSize, filteredTargets.rows);
+        // testSamples.push_back(samples.rowRange(8000, 13000));
+        // testTarget.push_back(target.rowRange(8000, 13000));
     }
 
     // use = 1 if you want to apply the calculated Standartizations parameters on another set
@@ -91,6 +116,8 @@ public:
         // Initialize mean and standard deviation matrices only if 'use' is false
         if (!use)
         {
+            // it should theoreticaly be possible to calc mean and stdDev of a sample and use these to standardize the rest of the set
+            // currently not working
             mean = cv::Mat::zeros(1, data.cols, CV_32F);
             stdDev = cv::Mat::zeros(1, data.cols, CV_32F);
         }
@@ -230,26 +257,78 @@ class SVM
 public:
     SVM() {}
     ~SVM() {}
-    void trainSVM(cv::Mat &trainLabels, cv::Mat &trainData)
+
+    void trainSVM(cv::Mat &trainLabels, cv::Mat &trainData, double C, double gamma)
     {
-        // Create an SVM object
-        cv::Ptr<cv::ml::SVM> svm = cv::ml::SVM::create();
+        trainLabels.convertTo(trainLabels, CV_32S);
+        svm = cv::ml::SVM::create();
         svm->setType(cv::ml::SVM::C_SVC);
         svm->setKernel(cv::ml::SVM::RBF);
-        svm->setNu(0.5);     // Example value, adjust based on grid search
-        svm->setGamma(0.05); // Example value, adjust based on grid search
-
-        // Train the SVM
+        svm->setC(C);
+        svm->setGamma(gamma);
+        std::cout << "training \n";
         svm->train(trainData, cv::ml::ROW_SAMPLE, trainLabels);
     }
-    float evaluateSVM(cv::Ptr<cv::ml::SVM> &svm, cv::Mat &testData, cv::Mat &testLabels)
+
+    float evaluateSVM(cv::Mat &testData, cv::Mat &testLabels)
     {
+        if (testData.empty() || testLabels.empty())
+        {
+            std::cerr << "Error: TestData or TestLabels are empty." << std::endl;
+            return 0.0; // or handle more appropriately depending on your application
+        }
+
+        if (!svm || !svm->isTrained())
+        {
+            std::cerr << "Error: SVM model is not trained or not initialized." << std::endl;
+            return 0.0;
+        }
+
         cv::Mat response;
-        svm->predict(testData, response);
-        return cv::countNonZero(response == testLabels) / (float)testData.rows;
+        try
+        {
+            svm->predict(testData, response);
+        }
+        catch (const cv::Exception &e)
+        {
+            std::cerr << "OpenCV Error during SVM prediction: " << e.what() << std::endl;
+            return 0.0;
+        }
+
+        int correctPredictions = cv::countNonZero(response == testLabels);
+        return correctPredictions / (float)testData.rows;
+    }
+
+    void gridSearch(cv::Mat &trainLabels, cv::Mat &trainData, cv::Mat &testLabels, cv::Mat &testData)
+    {
+        std::vector<double> C_values = {0.4, 0.5, 0.6, 0.7, 1, 2, 3};
+        std::vector<double> gamma_values = {0.02, 0.01, 0.001, 0.005, 0.0001};
+
+        double bestC = 0, bestGamma = 0;
+        float bestAccuracy = 0;
+
+        for (double C : C_values)
+        {
+            for (double gamma : gamma_values)
+            {
+                trainSVM(trainLabels, trainData, C, gamma);
+                float accuracy = evaluateSVM(testData, testLabels);
+                if (accuracy > bestAccuracy)
+                {
+                    bestAccuracy = accuracy;
+                    bestC = C;
+                    bestGamma = gamma;
+                }
+            }
+        }
+
+        std::cout << "Best C: " << bestC << ", Best Gamma: " << bestGamma << ", Best Accuracy: " << bestAccuracy << std::endl;
+
+        // Optionally, you can retrain the SVM with the best parameters on the full dataset here
     }
 
 private:
+    cv::Ptr<cv::ml::SVM> svm;
 };
 
 int main()
@@ -260,9 +339,11 @@ int main()
     dp.sampleAndFilter();
 
     cv::Mat trainingTargets = dp.getTarget(1);
-    dp.testPrint(trainingTargets,1);
+    dp.testPrint(trainingTargets, 1);
     cv::Mat trainingSamples = dp.getSamples(1);
-    dp.testPrint(trainingSamples,1);
+    dp.testPrint(trainingSamples, 1);
+
+    cv::Mat testingTargets = dp.getTarget(2);
     cv::Mat testingSamples = dp.getSamples(2);
 
     dp.standardizeData(trainingSamples, 0);
@@ -280,13 +361,21 @@ int main()
     PCA_ pca;
     pca.applyPCA(trainingSamples);
     std::cout << "Training Dataset metrics after PCA:";
+    // dp.standardizeData(trainingSamples, 0);
     dp.testPrint(trainingSamples, 1);
     dp.testPrintMeanStdDev(trainingSamples, 1);
 
     dp.saveAsCsv(trainingTargets, trainingSamples, "PCA");
-    
-    SVM svm;
-    svm.trainSVM(trainingTargets, trainingSamples);
 
+    SVM svmModel;
+
+    svmModel.trainSVM(trainingTargets, trainingSamples, 1.0, 0.01);
+    float accuracy = svmModel.evaluateSVM(testingSamples, testingTargets);
+    std::cout << "Initial SVM Accuracy: " << accuracy << std::endl;
+
+    svmModel.gridSearch(trainingTargets, trainingSamples, testingTargets, testingSamples);
+
+    accuracy = svmModel.evaluateSVM(testingSamples, testingTargets);
+    std::cout << "Optimized SVM Accuracy: " << accuracy << std::endl;
     return 0;
 };
