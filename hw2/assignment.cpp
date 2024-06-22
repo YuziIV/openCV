@@ -113,9 +113,18 @@ public:
             }
         }
     }
-    void testPrint(cv::Mat &data, bool size)
+    void saveAsCsv(cv::Mat targets_, cv::Mat samples_, std::string Name)
     {
-        if (!size)
+        cv::Mat data_;
+        cv::hconcat(targets_, samples_, data_);
+        std::ofstream outputFile(Name + ".csv");
+        outputFile << format(data_, cv::Formatter::FMT_CSV) << std::endl;
+        outputFile.close();
+    }
+
+    void testPrint(cv::Mat &data, bool sizeOnly)
+    {
+        if (!sizeOnly)
         {
             for (int i = 0; i < data.rows; ++i)
             {
@@ -219,26 +228,26 @@ private:
 class SVM
 {
 public:
-    // SVM() {}
-    // ~SVM() {}
-    // void trainSVM(cv::Mat &trainData, cv::Mat &trainLabels)
-    // {
-    //     // Create an SVM object
-    //     cv::Ptr<cv::ml::SVM> svm = cv::ml::SVM::create();
-    //     svm->setType(cv::ml::SVM::C_SVC);
-    //     svm->setKernel(cv::ml::SVM::RBF);
-    //     svm->setNu(0.5);     // Example value, adjust based on grid search
-    //     svm->setGamma(0.05); // Example value, adjust based on grid search
+    SVM() {}
+    ~SVM() {}
+    void trainSVM(cv::Mat &trainLabels, cv::Mat &trainData)
+    {
+        // Create an SVM object
+        cv::Ptr<cv::ml::SVM> svm = cv::ml::SVM::create();
+        svm->setType(cv::ml::SVM::C_SVC);
+        svm->setKernel(cv::ml::SVM::RBF);
+        svm->setNu(0.5);     // Example value, adjust based on grid search
+        svm->setGamma(0.05); // Example value, adjust based on grid search
 
-    //     // Train the SVM
-    //     svm->train(trainData, cv::ml::ROW_SAMPLE, trainLabels);
-    // }
-    // float evaluateSVM(cv::Ptr<cv::ml::SVM> &svm, cv::Mat &testData, cv::Mat &testLabels)
-    // {
-    //     cv::Mat response;
-    //     svm->predict(testData, response);
-    //     return cv::countNonZero(response == testLabels) / (float)testData.rows;
-    // }
+        // Train the SVM
+        svm->train(trainData, cv::ml::ROW_SAMPLE, trainLabels);
+    }
+    float evaluateSVM(cv::Ptr<cv::ml::SVM> &svm, cv::Mat &testData, cv::Mat &testLabels)
+    {
+        cv::Mat response;
+        svm->predict(testData, response);
+        return cv::countNonZero(response == testLabels) / (float)testData.rows;
+    }
 
 private:
 };
@@ -250,13 +259,18 @@ int main()
     dp.mergeAndShuffleData(); // shuffle whole Dataset
     dp.sampleAndFilter();
 
+    cv::Mat trainingTargets = dp.getTarget(1);
+    dp.testPrint(trainingTargets,1);
     cv::Mat trainingSamples = dp.getSamples(1);
+    dp.testPrint(trainingSamples,1);
     cv::Mat testingSamples = dp.getSamples(2);
 
     dp.standardizeData(trainingSamples, 0);
     std::cout << "Training Dataset metrics:";
     dp.testPrint(trainingSamples, 1);
     dp.testPrintMeanStdDev(trainingSamples, 1);
+
+    dp.saveAsCsv(trainingTargets, trainingSamples, "Standardized_training");
 
     dp.standardizeData(testingSamples, 0);
     std::cout << "Testing Dataset metrics:";
@@ -268,5 +282,11 @@ int main()
     std::cout << "Training Dataset metrics after PCA:";
     dp.testPrint(trainingSamples, 1);
     dp.testPrintMeanStdDev(trainingSamples, 1);
+
+    dp.saveAsCsv(trainingTargets, trainingSamples, "PCA");
+    
+    SVM svm;
+    svm.trainSVM(trainingTargets, trainingSamples);
+
     return 0;
 };
